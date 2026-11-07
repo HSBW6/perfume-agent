@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 本地配置与密钥
+.env
+
+# 运行时生成的数据库（由 seed_formulas.json 自动重建）
+data/*.db
+data/*.db-journal
+
+# 编辑器
+.idea/
+.vscode/
+.DS_Store

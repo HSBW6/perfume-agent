@@ -1,0 +1,152 @@
+[
+  {
+    "formula_id": "f001",
+    "name": "星际漫步",
+    "family": "木质",
+    "notes": "融合琥珀与檀香的深邃木质调",
+    "intensity": "浓",
+    "tags": ["木质", "温暖", "神秘"],
+    "audience": "通用",
+    "secret_blob": "SECRET-f001-演示占位-禁止读取-8f2a91c4"
+  },
+  {
+    "formula_id": "f002",
+    "name": "雪松晨雾",
+    "family": "木质",
+    "notes": "雪松与冷杉的清冽晨间木质",
+    "intensity": "淡",
+    "tags": ["木质", "清冷", "通透"],
+    "audience": "通勤",
+    "secret_blob": "SECRET-f002-演示占位-禁止读取-3d7e15a9"
+  },
+  {
+    "formula_id": "f003",
+    "name": "广藿之夜",
+    "family": "木质",
+    "notes": "广藿香与苔藓的潮湿泥土气息",
+    "intensity": "浓",
+    "tags": ["木质", "厚重", "沉静"],
+    "audience": "夜间",
+    "secret_blob": "SECRET-f003-演示占位-禁止读取-6b0c88f2"
+  },
+  {
+    "formula_id": "f004",
+    "name": "白桃初雪",
+    "family": "花香",
+    "notes": "白桃与铃兰的柔软花瓣调",
+    "intensity": "淡",
+    "tags": ["花香", "清甜", "少女"],
+    "audience": "约会",
+    "secret_blob": "SECRET-f004-演示占位-禁止读取-1a4f70de"
+  },
+  {
+    "formula_id": "f005",
+    "name": "夜鸢尾",
+    "family": "花香",
+    "notes": "鸢尾根与紫罗兰的粉质花香",
+    "intensity": "中",
+    "tags": ["花香", "优雅", "复古"],
+    "audience": "正式场合",
+    "secret_blob": "SECRET-f005-演示占位-禁止读取-c92b3341"
+  },
+  {
+    "formula_id": "f006",
+    "name": "栀子白",
+    "family": "花香",
+    "notes": "栀子与茉莉的浓白花香",
+    "intensity": "浓",
+    "tags": ["花香", "馥郁", "夏日"],
+    "audience": "通用",
+    "secret_blob": "SECRET-f006-演示占位-禁止读取-77ae0b52"
+  },
+  {
+    "formula_id": "f007",
+    "name": "青柠海盐",
+    "family": "柑橘",
+    "notes": "青柠与海盐的清透柑橘调",
+    "intensity": "淡",
+    "tags": ["柑橘", "清透", "活力"],
+    "audience": "夏日",
+    "secret_blob": "SECRET-f007-演示占位-禁止读取-4c8d2265"
+  },
+  {
+    "formula_id": "f008",
+    "name": "血橙黄昏",
+    "family": "柑橘",
+    "notes": "血橙与粉红胡椒的暖柑橘",
+    "intensity": "中",
+    "tags": ["柑橘", "微辛", "温暖"],
+    "audience": "秋冬",
+    "secret_blob": "SECRET-f008-演示占位-禁止读取-e5139ba7"
+  },
+  {
+    "formula_id": "f009",
+    "name": "佛手柑雨",
+    "family": "柑橘",
+    "notes": "佛手柑与雨水的微苦清新",
+    "intensity": "淡",
+    "tags": ["柑橘", "清苦", "干净"],
+    "audience": "通勤",
+    "secret_blob": "SECRET-f009-演示占位-禁止读取-2f6a481d"
+  },
+  {
+    "formula_id": "f010",
+    "name": "沉香琥珀",
+    "family": "东方",
+    "notes": "沉香与琥珀的浓重树脂香",
+    "intensity": "浓",
+    "tags": ["东方", "浓郁", "神秘"],
+    "audience": "夜间",
+    "secret_blob": "SECRET-f010-演示占位-禁止读取-9ae02c73"
+  },
+  {
+    "formula_id": "f011",
+    "name": "香草烟熏",
+    "family": "东方",
+    "notes": "香草豆与烟熏木的甜暖东方",
+    "intensity": "浓",
+    "tags": ["东方", "甜暖", "性感"],
+    "audience": "约会",
+    "secret_blob": "SECRET-f011-演示占位-禁止读取-5d13f8c6"
+  },
+  {
+    "formula_id": "f012",
+    "name": "乳香圣殿",
+    "family": "东方",
+    "notes": "乳香与没药的焚香气息",
+    "intensity": "中",
+    "tags": ["东方", "焚香", "庄重"],
+    "audience": "正式场合",
+    "secret_blob": "SECRET-f012-演示占位-禁止读取-b406e17a"
+  },
+  {
+    "formula_id": "f013",
+    "name": "雨后森林",
+    "family": "清新",
+    "notes": "绿叶与水汽的森林雨意",
+    "intensity": "淡",
+    "tags": ["清新", "绿意", "舒缓"],
+    "audience": "日常",
+    "secret_blob": "SECRET-f013-演示占位-禁止读取-0ce7b934"
+  },
+  {
+    "formula_id": "f014",
+    "name": "白茶竹影",
+    "family": "清新",
+    "notes": "白茶与竹叶的淡雅清茶香",
+    "intensity": "淡",
+    "tags": ["清新", "茶香", "安静"],
+    "audience": "通勤",
+    "secret_blob": "SECRET-f014-演示占位-禁止读取-a85d20f1"
+  },
+  {
+    "formula_id": "f015",
+    "name": "海风薄荷",
+    "family": "清新",
+    "notes": "海洋调与薄荷的凉意",
+    "intensity": "中",
+    "tags": ["清新", "冰凉", "运动"],
+    "audience": "运动",
+    "secret_blob": "SECRET-f015-演示占位-禁止读取-63bf9d08"
+  }
+]
