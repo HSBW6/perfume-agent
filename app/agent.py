@@ -12,6 +12,7 @@
 """
 
 import json
+import re
 
 from . import llm, memory
 from .formula_tool import assert_clean, search_formulas
@@ -40,65 +41,271 @@ OCCASION_KEYWORDS = {
     "日常": ("日常", "平时", "出门", "逛街"),
 }
 
-# 强度词：正向与相对调整
+# 强度词：正向（"别太浓/不浓"这类带否定的说法不放在这里，交给否定逻辑处理）
 INTENSITY_STRONG = ("浓", "浓郁", "强烈", "厚重", "持久", "重一点")
-INTENSITY_LIGHT = ("淡", "清淡", "轻盈", "轻一点", "别太浓", "不浓", "薄")
+INTENSITY_LIGHT = ("淡", "清淡", "轻盈", "轻一点", "薄")
 INTENSITY_MID = ("中", "适中", "中等", "刚好")
 
 # 相对调整信号：出现这些词说明是在"原来基础上调一档"，而不是直接指定
 RELATIVE_WORDS = ("一点", "稍微", "稍稍", "别太", "不要太", "降低", "弱化", "加强")
 
-# 否定/避雷："别太甜""不要玫瑰"
-# 用"前缀 + 词表"的写法而不是宽泛正则：正则贪婪会把"甜但别太"整段吃掉，误伤后续判断
-NEGATIVE_TARGETS = (
-    "甜",
-    "腻",
-    "玫瑰",
-    "柑橘",
-    "木质",
-    "东方",
-    "花香",
-    "浓",
-    "冲",
-    "刺鼻",
-    "苦",
-    "烟",
-    "酒精",
-    "脂粉",
-    "麝香",
+
+# ---------------------------------------------------------------------------
+# 否定语义：作用域切分 + 对象归类
+# ---------------------------------------------------------------------------
+# 为什么要单独一层：旧实现是"整句扫描，否定词挨着目标词就算否定"，有两个典型错误：
+#   1. 「我不太喜欢太浓的味道」——看到"浓"就写 intensity=浓，前面的否定被无视；
+#   2. 「不要玫瑰，但茉莉可以」——否定越过逗号，把后一分句的茉莉也否定了。
+#
+# 现在的做法四步走：
+#   切分句 → 分句内定位否定标记与被否定对象 → 对象按类别归档 → 正向表达优先。
+# 否定只管辖它所在的分句，跨分句不继承、不传递。
+
+# 分句边界：逗号/句号/分号/感叹问号/冒号/换行，以及"但""不过"。
+# "除了"用零宽断言切开，让它留在后一分句开头——它本身是否定标记，不能当边界丢掉。
+SCOPE_SPLIT = re.compile(r"[，,。；;！!？?：:\n]+|但是|但|不过|(?=除了)")
+
+# 前缀式否定：否定词在被否定对象之前
+NEG_PREFIX_TRIGGERS = (
+    "不太喜欢",
+    "不喜欢",
+    "不想要",
+    "不太爱",
+    "受不了",
+    "不要",
+    "不太",
+    "别太",
+    "别",
+    "讨厌",
+    "避开",
+    "除了",
+    "不想",
+    "忌",
 )
-NEGATIVE_PREFIX = ("不要", "别太", "别", "讨厌", "不喜欢", "不想", "避开", "忌", "除")
+
+# 后缀式否定：对象在前、否定词在后（"柑橘…受不了""玫瑰也过敏""茉莉不行"）
+NEG_SUFFIX_TRIGGERS = (
+    "受不了",
+    "不行",
+    "闻着头晕",
+    "头晕",
+    "有点上头",
+    "上头",
+    "过敏",
+    "不喜欢",
+    "讨厌",
+)
+
+# 香调类对象：命中后记进 taboos
+FAMILY_TARGETS = (
+    "佛手柑",
+    "紫罗兰",
+    "白花",
+    "玫瑰",
+    "茉莉",
+    "柑橘",
+    "柠檬",
+    "青柠",
+    "花香",
+    "木质",
+    "檀香",
+    "雪松",
+    "广藿",
+    "苔藓",
+    "东方",
+    "琥珀",
+    "沉香",
+    "香草",
+    "麝香",
+    "乳香",
+    "焚香",
+    "树脂",
+    "清新",
+    "海洋",
+    "薄荷",
+    "绿叶",
+    "茶香",
+    "栀子",
+    "铃兰",
+    "鸢尾",
+    "松木",
+    "花瓣",
+    "檀",
+    "橘",
+    "桃",
+)
+
+# 强度类对象：被否定后沿强度轴取反，而不是记进 taboos
+INTENSITY_TARGETS = (
+    ("太浓", "浓"),
+    ("浓烈", "浓"),
+    ("强烈", "浓"),
+    ("厚重", "浓"),
+    ("太重", "浓"),
+    ("太冲", "浓"),
+    ("刺鼻", "浓"),
+    ("浓郁", "浓"),
+    ("浓", "浓"),
+    ("重", "浓"),
+    ("冲", "浓"),
+    ("甜", "浓"),
+    ("腻", "浓"),
+    ("太淡", "淡"),
+    ("清淡", "淡"),
+    ("淡", "淡"),
+    ("轻", "淡"),
+)
+
+# 场合类对象：被否定时不做反向推断，直接忽略这个场合
+OCCASION_TARGETS = ("上班", "通勤", "约会", "晚宴", "婚礼", "运动", "面试", "聚会")
+
+# 强度轴取反：否定"浓"意味着想要更淡，反之亦然
+INTENSITY_INVERT = {"浓": "淡", "淡": "浓"}
+
+_INTENSITY_DIRECTION = dict(INTENSITY_TARGETS)
+
+# 预生成检索词典：同类按词长降序（"太浓"必须先于"浓"匹配，否则长词永远吃不到）
+_TARGET_LEXICON: list[tuple[str, str]] = []
+for _kind, _words in (
+    ("intensity", {w for w, _ in INTENSITY_TARGETS}),
+    ("family", set(FAMILY_TARGETS)),
+    ("occasion", set(OCCASION_TARGETS)),
+):
+    for _w in sorted(_words, key=len, reverse=True):
+        _TARGET_LEXICON.append((_w, _kind))
 
 
-def _find_family(message: str) -> str:
+def _split_scope(text: str) -> list[str]:
+    """按分句边界切分，空片段丢掉。"""
+    parts = SCOPE_SPLIT.split(text or "")
+    return [p.strip() for p in parts if p and p.strip()]
+
+
+def _iter_targets(clause: str):
+    """列出分句里出现的全部"可能被否定的对象"，长词优先且互不重叠。"""
+    spans: list[tuple[int, int]] = []
+    for word, kind in _TARGET_LEXICON:
+        for m in re.finditer(re.escape(word), clause):
+            if any(not (m.end() <= s or m.start() >= e) for s, e in spans):
+                continue  # 已被更长的词占用（"太浓"里的那个"浓"）
+            spans.append((m.start(), m.end()))
+            yield word, kind, m.start(), m.end()
+
+
+def _is_negated(clause: str, start: int, end: int) -> bool:
+    """判断分句内某个对象是否处于否定作用域里。
+
+    只在本分句内判断——跨分句一律 False，这就是"否定不跨句"的落点。
+    """
+    before = clause[:start]
+    after = clause[end:]
+
+    # 后缀式："柑橘类我有点受不了"——对象后面 6 个字内出现否定
+    for trig in NEG_SUFFIX_TRIGGERS:
+        pos = after.find(trig)
+        if 0 <= pos <= 6:
+            return True
+
+    # 前缀式："不喜欢玫瑰"——对象前面 6 个字内出现否定
+    for trig in NEG_PREFIX_TRIGGERS:
+        pos = before.rfind(trig)
+        if pos >= 0 and len(before[pos + len(trig) :]) <= 6:
+            return True
+    return False
+
+
+def _strip_negated(clause: str) -> str:
+    """把分句里被否定的对象抹掉，防止它们稍后被当成正向偏好再命中一次。"""
+    hits = [(s, e) for _w, _k, s, e in _iter_targets(clause) if _is_negated(clause, s, e)]
+    if not hits:
+        return clause
+    chars = list(clause)
+    for s, e in hits:
+        for i in range(s, e):
+            chars[i] = "□"
+    return "".join(chars)
+
+
+def _negated_objects(clause: str) -> tuple[list[str], list[str], list[str]]:
+    """返回 (香调类禁忌, 强度方向列表, 被排除的场合)。"""
+    taboos: list[str] = []
+    directions: list[str] = []
+    blocked_occasions: list[str] = []
+    for word, kind, s, e in _iter_targets(clause):
+        if not _is_negated(clause, s, e):
+            continue
+        if kind == "family":
+            taboos.append(word)
+        elif kind == "intensity":
+            directions.append(_INTENSITY_DIRECTION.get(word, "浓"))
+        else:
+            blocked_occasions.append(word)
+    return taboos, directions, blocked_occasions
+
+
+def analyze_negation(message: str) -> dict:
+    """整句范围的否定分析，供画像抽取与推荐两处复用。"""
+    taboos: list[str] = []
+    directions: list[str] = []
+    blocked: list[str] = []
+    for clause in _split_scope(message):
+        t, d, b = _negated_objects(clause)
+        taboos.extend(t)
+        directions.extend(d)
+        blocked.extend(b)
+    return {
+        "taboos": _dedupe(taboos),
+        "intensity_direction": directions[0] if directions else "",
+        "blocked_occasions": _dedupe(blocked),
+    }
+
+
+def _dedupe(items) -> list:
+    """保序去重，顺手过滤空值。"""
+    seen = set()
+    out = []
+    for item in items:
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+    return out
+
+
+def _find_family(clause: str) -> str:
+    """在分句里找正向香调；处于否定作用域内的词不参与。"""
     for family, words in FAMILY_KEYWORDS.items():
-        if any(w in message for w in words):
-            return family
+        for word in words:
+            pos = clause.find(word)
+            if pos >= 0 and not _is_negated(clause, pos, pos + len(word)):
+                return family
     return ""
 
 
-def _find_occasion(message: str) -> str:
+def _find_occasion(clause: str) -> str:
+    """在分句里找正向场合；"不适合上班"这类被否定的场合直接跳过。"""
     for occasion, words in OCCASION_KEYWORDS.items():
-        if any(w in message for w in words):
-            return occasion
+        for word in words:
+            pos = clause.find(word)
+            if pos >= 0 and not _is_negated(clause, pos, pos + len(word)):
+                return occasion
     return ""
 
 
-def _find_intensity(message: str, current: str) -> tuple[str, bool]:
-    """返回 (强度, 是否相对调整)。
+def _positive_intensity(clause: str, current: str) -> tuple[str, bool]:
+    """从"已抹掉否定对象"的分句里读正向强度，返回 (强度, 是否相对调整)。
 
     "清新一点""别太浓"这类说法没有直接给出档位，只有方向：
-    约定"一点/稍微"表示往更轻的方向调（香水语境里最常见的意图），
-    再以**用户自己的旧画像**为基准上下调一档——这正是千人千香的来源之一。
+    约定"一点/稍微"表示往更轻的方向调，并以**用户自己的旧画像**为基准上下调一档。
     """
-    relative = any(w in message for w in RELATIVE_WORDS)
+    relative = any(w in clause for w in RELATIVE_WORDS)
     current = current if current in INTENSITIES else ""
 
-    if any(w in message for w in INTENSITY_STRONG):
+    if any(w in clause for w in INTENSITY_STRONG):
         base = "浓"
-    elif any(w in message for w in INTENSITY_LIGHT):
+    elif any(w in clause for w in INTENSITY_LIGHT):
         base = "淡"
-    elif any(w in message for w in INTENSITY_MID):
+    elif any(w in clause for w in INTENSITY_MID):
         base = "中"
     elif relative:
         base = "淡"
@@ -106,7 +313,6 @@ def _find_intensity(message: str, current: str) -> tuple[str, bool]:
         return "", False
 
     if relative and current:
-        # 以旧画像为基准调整一档，而不是直接覆盖
         idx = INTENSITIES.index(current)
         if base == "淡":
             idx = max(0, idx - 1)
@@ -114,14 +320,6 @@ def _find_intensity(message: str, current: str) -> tuple[str, bool]:
             idx = min(len(INTENSITIES) - 1, idx + 1)
         return INTENSITIES[idx], True
     return base, False
-
-
-def _find_negatives(message: str) -> list[str]:
-    found: list[str] = []
-    for word in NEGATIVE_TARGETS:
-        if any(f"{prefix}{word}" in message for prefix in NEGATIVE_PREFIX):
-            found.append(word)
-    return found
 
 
 # ---------------------------------------------------------------------------
@@ -141,24 +339,58 @@ LLM_EXTRACT_PROMPT = """你是香水顾问系统的偏好抽取模块。根据�
 
 
 def extract_fields(message: str, current_profile: dict) -> dict:
-    """规则抽取（永远可用，保证离线 Demo 跑通）。"""
-    fields: dict = {}
+    """规则抽取（永远可用，保证离线 Demo 跑通）。
 
-    family = _find_family(message)
+    按分句处理，保证否定只作用于它所在的分句：
+    - 香调/场合只取"未被否定"的正向表述，取到第一个就停；
+    - 强度：有正向就以正向为准，没有才用被否定强度的取反结果（正向优先）；
+    - 禁忌：新命中并入旧列表并去重，不覆盖。
+    """
+    fields: dict = {}
+    clauses = _split_scope(message)
+
+    family = ""
+    occasion = ""
+    positive_intensity = ""
+    relative = False
+    negated_intensity = ""
+    new_taboos: list[str] = []
+
+    for clause in clauses:
+        if not family:
+            family = _find_family(clause)
+        if not occasion:
+            occasion = _find_occasion(clause)
+
+        clause_taboos, clause_dirs, _blocked = _negated_objects(clause)
+        new_taboos.extend(clause_taboos)
+        if clause_dirs and not negated_intensity:
+            negated_intensity = clause_dirs[0]
+
+        # 本分句已经有"被否定的强度"，就不再从它里面读正向强度，
+        # 否则「我不太喜欢太浓的味道」会把"浓"再当正向偏好算一遍
+        if not positive_intensity and not clause_dirs:
+            pos, rel = _positive_intensity(
+                _strip_negated(clause), current_profile.get("intensity", "")
+            )
+            if pos:
+                positive_intensity, relative = pos, rel
+
     if family:
         fields["scent_family"] = family
-
-    occasion = _find_occasion(message)
     if occasion:
         fields["occasion"] = occasion
 
-    intensity, relative = _find_intensity(message, current_profile.get("intensity", ""))
-    if intensity:
-        fields["intensity"] = intensity
+    if positive_intensity:
+        fields["intensity"] = positive_intensity
+    elif negated_intensity:
+        inverted = INTENSITY_INVERT.get(negated_intensity, "")
+        if inverted:
+            fields["intensity"] = inverted
 
-    negatives = _find_negatives(message)
-    if negatives:
-        fields["taboos"] = negatives
+    if new_taboos:
+        # 禁忌是累积语义：旧禁忌不能因为这次没提就被清掉
+        fields["taboos"] = _dedupe(list(current_profile.get("taboos") or []) + new_taboos)
 
     # 把相对调整的痕迹记进历史，便于演示"跨会话记忆"
     if relative:
@@ -381,7 +613,7 @@ def handle_chat(user_id: str, message: str) -> dict:
 
     # avoid 只参与本次打分，不落库（属于"这一次不要"的临时约束）
     intent = dict(fields)
-    intent["avoid"] = _find_negatives(message)
+    intent["avoid"] = analyze_negation(message)["taboos"]
 
     profile = memory.upsert_profile(user_id, fields) if fields else profile_before
 
