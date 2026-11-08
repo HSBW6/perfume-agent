@@ -193,6 +193,22 @@ python verify.py
 脚本会在 8011 端口自己拉起服务、跑完六条验收标准、再重启一次验证持久化，最后打印 `PASS/FAIL` 汇总。
 它会占用 8011 端口，不影响你手动起的 8000。
 
+## 评测（pytest）
+
+`evals/` 下是一套端到端评测：读 `data/eval_cases.json`，对运行中的服务发真实请求，按类别分组统计。
+
+```powershell
+# 终端 1：必须带 EVAL_HOOKS=1，否则无法注入用例的初始画像
+$env:EVAL_HOOKS='1'; uvicorn app.main:app --port 8000
+
+# 终端 2
+pytest evals/ -v --split=tune
+pytest evals/ -q --repeat=3          # 看稳定性
+```
+
+结果自动留档到 `evals/results/{timestamp}_{version}.{json,md}`，方便对比改动前后。
+详情见 `evals/README.md`，本轮实测数据与问题清单见 `evals/DELIVERY.md`。
+
 ## 换成真实配方前必须知道的事
 
 - 本 Demo 里的 `secret_blob` 是**占位字符串**，只为演示"库里有这一列但读不到"；

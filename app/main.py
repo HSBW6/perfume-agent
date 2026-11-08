@@ -7,8 +7,9 @@
 """
 
 from contextlib import asynccontextmanager
+import os
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -258,3 +259,61 @@ def root() -> dict:
             "formulas": count_formulas(),
         }
     )
+
+
+# ---------------------------------------------------------------------------
+# 评测钩子（不属于业务接口，默认关闭）
+# ---------------------------------------------------------------------------
+# 为什么需要：评测集里的用例大多依赖"测前已有画像"（例如"比上次淡一点点"
+# 必须读到历史强度），而正常对话无法凭空构造出一个精确的初始画像。
+# 这两个接口只做两件事：写入/清除某个用户的 profile，不碰保密逻辑、不返回配方。
+#
+# 三道保险：
+#   1. 必须 EVAL_HOOKS=1 启动服务才生效，默认 404；
+#   2. 只允许操作 eval_ 前缀的 user_id，防止误伤真实用户；
+#   3. include_in_schema=False，不出现在 /docs 里。
+
+EVAL_HOOKS_ON = os.getenv("EVAL_HOOKS", "").strip().lower() in ("1", "true", "yes")
+
+
+class TestProfileRequest(BaseModel):
+    user_id: str = Field(..., min_length=1, max_length=64)
+    profile: dict = Field(default_factory=dict)
+
+
+def _require_eval_hooks(user_id: str) -> None:
+    if not EVAL_HOOKS_ON:
+        raise HTTPException(
+            status_code=404,
+            detail="评测钩子未启用：请用 EVAL_HOOKS=1 启动服务",
+        )
+    if not user_id.startswith("eval_"):
+        raise HTTPException(
+            status_code=403,
+            detail="评测钩子只允许操作 eval_ 前缀的用户",
+        )
+
+
+@app.post("/_test/profile", include_in_schema=False)
+def test_set_profile(req: TestProfileRequest) -> dict:
+    """写入（合并式覆盖）某个评测用户的画像，用于构造测试前置条件。"""
+    _require_eval_hooks(req.user_id)
+    profile = memory.upsert_profile(req.user_id, req.profile)
+    return ok({"user_id": req.user_id, "profile": profile})
+
+
+@app.delete("/_test/profile/{user_id}", include_in_schema=False)
+def test_clear_profile(user_id: str) -> dict:
+    """清除某个评测用户的画像，保证用例之间不串味。"""
+    _require_eval_hooks(user_id)
+    with memory.get_conn() as conn:
+        conn.execute("DELETE FROM profile WHERE user_id = ?", (user_id,))
+    return ok({"cleared": user_id})
+
+
+@app.get("/_test/health", include_in_schema=False)
+def test_health() -> dict:
+    """供评测脚本探测钩子是否可用。"""
+    if not EVAL_HOOKS_ON:
+        raise HTTPException(status_code=404, detail="评测钩子未启用")
+    return ok({"eval_hooks": True, "service": "perfume-agent"})
